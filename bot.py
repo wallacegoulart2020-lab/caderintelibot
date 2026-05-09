@@ -1,7 +1,7 @@
 import logging
 import re
 import os
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, ContextTypes
 
@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 TOKEN = os.environ.get("BOT_TOKEN")
 if not TOKEN:
     raise ValueError("BOT_TOKEN não definido nas variáveis de ambiente!")
+
+# Fuso horário Brasil (UTC-3)
+BR = timezone(timedelta(hours=-3))
 
 LINE_CONFIG = {
     "512": {"emoji": "🟢", "label": "Linha 512", "local": "Enchedora"},
@@ -64,6 +67,9 @@ KEYBOARD = ReplyKeyboardMarkup(
     resize_keyboard=True,
 )
 
+def agora_br():
+    return datetime.now(BR)
+
 def detectar_linha(texto):
     tl = texto.lower()
     for linha, palavras in KEYWORDS.items():
@@ -94,12 +100,12 @@ def gerar_hashtags(texto, linha):
 def formatar(texto, linha):
     cfg = LINE_CONFIG[linha]
     tipo = detectar_tipo(texto)
-    hoje = datetime.now().strftime("%d/%m/%Y")
-    hora = datetime.now().strftime("%H:%M")
-    data_curta = datetime.now().strftime("%d/%m")
+    now = agora_br()
+    hoje = now.strftime("%d/%m/%Y")
+    hora = now.strftime("%H:%M")
+    data_curta = now.strftime("%d/%m")
     tags = gerar_hashtags(texto, linha)
     label = f"L{linha}" if linha != "galpao" else "Galpão"
-
     corpo = re.sub(r'\b(V\d{1,3})\b', r'*\1*', texto, flags=re.IGNORECASE)
 
     return (
@@ -146,19 +152,15 @@ async def receber_anotacao(update: Update, context: ContextTypes.DEFAULT_TYPE):
         nota = formatar(texto, linha)
         cfg = LINE_CONFIG[linha]
         label = f"L{linha}" if linha != "galpao" else "Galpão"
-
         await update.message.reply_text(
             f"✅ {cfg['emoji']} *Salvo — {label}*\n\n{nota}",
             parse_mode="Markdown",
             reply_markup=KEYBOARD,
         )
         logger.info("Salvo | %s | %s", label, update.effective_user.first_name)
-
     except Exception as e:
         logger.error("Erro: %s", e)
-        await update.message.reply_text(
-            f"✅ Anotação salva!\n\n{texto}",
-        )
+        await update.message.reply_text(f"✅ Anotação salva!\n\n{texto}")
 
 def main():
     app = Application.builder().token(TOKEN).build()
