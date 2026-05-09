@@ -15,7 +15,6 @@ TOKEN = os.environ.get("BOT_TOKEN")
 if not TOKEN:
     raise ValueError("BOT_TOKEN não definido nas variáveis de ambiente!")
 
-# Fuso horário Brasil (UTC-3)
 BR = timezone(timedelta(hours=-3))
 
 LINE_CONFIG = {
@@ -141,6 +140,9 @@ async def selecionar_linha(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def receber_anotacao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text.strip()
+    msg_id = update.message.message_id
+    chat_id = update.effective_chat.id
+
     if len(texto) < 5:
         await update.message.reply_text("✏️ Anotação muito curta. Escreva mais detalhes.")
         return
@@ -152,12 +154,22 @@ async def receber_anotacao(update: Update, context: ContextTypes.DEFAULT_TYPE):
         nota = formatar(texto, linha)
         cfg = LINE_CONFIG[linha]
         label = f"L{linha}" if linha != "galpao" else "Galpão"
-        await update.message.reply_text(
-            f"✅ {cfg['emoji']} *Salvo — {label}*\n\n{nota}",
+
+        # Apaga a mensagem original do usuário
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+        except Exception:
+            pass  # Se não conseguir apagar, continua normalmente
+
+        # Envia a versão formatada
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"✅ {cfg['emoji']} *Salvo — {label}*\n\n{nota}",
             parse_mode="Markdown",
             reply_markup=KEYBOARD,
         )
         logger.info("Salvo | %s | %s", label, update.effective_user.first_name)
+
     except Exception as e:
         logger.error("Erro: %s", e)
         await update.message.reply_text(f"✅ Anotação salva!\n\n{texto}")
